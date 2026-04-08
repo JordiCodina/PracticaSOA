@@ -180,6 +180,7 @@ int main (int argc, char *argv[]){
             offset ++;
             sb.s_prealloc_dir_blocks = (unsigned char) file[offset];
             offset ++;
+            offset += 2;
             for (int i = 0; i < 16; i++){
                 sb.s_journal_uuid[i] = file[offset++];
             }
@@ -195,6 +196,7 @@ int main (int argc, char *argv[]){
             }
             sb.s_def_hash_version = (unsigned char) file[offset];
             offset ++;
+            offset += 3;
             sb.s_default_mount_options = (unsigned int) file[offset];
             offset += 4;
             sb.s_first_meta_bg = (unsigned int) file[offset];
