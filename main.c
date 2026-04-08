@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #define NONE 0
 #define EXT2 1
@@ -44,9 +45,9 @@ typedef struct _SuperBlock {
     unsigned int s_feature_incompat;    //4 bytes
     unsigned int s_feature_ro_compat;   //4 bytes
 
-    unsigned char[16] s_uuid;           //16 bytes
-    unsigned char[16] s_volume_name;    //16 bytes
-    unsigned char[64] s_last_mounted;   //64 bytes
+    unsigned char s_uuid[16];           //16 bytes
+    unsigned char s_volume_name[16];    //16 bytes
+    unsigned char s_last_mounted[64];   //64 bytes
 
     unsigned int s_algo_bitmap;         //4 bytes
 
@@ -55,19 +56,77 @@ typedef struct _SuperBlock {
     unsigned char s_prealloc_dir_blocks;//1byte
 
     // Journaling Support
-    unsigned char[16] s_journal_uuid;   //16 bytes
+    unsigned char s_journal_uuid[16];   //16 bytes
     unsigned int s_journal_inum;        //4 bytes
     unsigned int s_journal_dev;         //4 bytes
     unsigned int s_last_orphan;         //4 bytes
 
     // Directory Indexing Support
-    unsigned int[4] s_hash_seed;        //16 bytes
+    unsigned int s_hash_seed[4];        //16 bytes
     unsigned char s_def_hash_version;   //1 byte
 
     // Other options
     unsigned int s_default_mount_options;//4 bytes
     unsigned int s_first_meta_bg;       //4 bytes
 } SuperBlock;
+
+void printFilesystemInfoExt2(SuperBlock sb) {
+
+    printf("\n");
+    printf("\n");
+    printf("------ Filesystem Information ------\n");
+    printf("\n");
+    printf("\n");
+    printf("Filesystem: EXT2\n");
+    printf("\n");
+
+    printf("INODE INFO\n");
+    printf("\tSize: ???\n");
+    printf("\tNum Inodes: %u\n", sb.s_inodes_count);
+    printf("\tFirst Inode: ???\n");
+    printf("\tInodes Group: ???\n");
+    printf("\tFree Inodes: ???\n");
+
+    printf("INODE BLOCK\n");
+    printf("\tBlock size: ???\n");
+    printf("\tReserved blocks: ???\n");
+    printf("\tFree blocks: ???\n");
+    printf("\tTotal blocks: ???\n");
+    printf("\tFirst block: ???\n");
+    printf("\tGroup blocks: ???\n");
+    printf("\tGroup frags: ???\n");
+
+    printf("INFO VOLUME\n");
+    printf("\tVolume name: ???\n");
+    printf("\tLast Checked: ???\n");
+    printf("\tLast Mounted: ???\n");
+    printf("\tLast Written: ???\n");
+}
+
+void printFilesystemInfoFat16() {
+
+    printf("\n");
+    printf("\n");
+    printf("------ Filesystem Information ------\n");
+    printf("\n");
+    printf("\n");
+    printf("Filesystem: FAT16\n");
+    printf("\n");
+
+    printf("System name: ???\n");
+    printf("Sector size: ???\n");
+    printf("Sectors per cluster: ???\n");
+    printf("Reserved sectors: ???\n");
+    printf("# of FATs: ???\n");
+    printf("Max root entries: ???\n");
+    printf("Sectors per FAT: ???\n");
+    printf("Label: ???\n");
+}
+
+void printErrorFileSystem() {
+
+    printf("ERROR: Unknown file system\n");
+}
 
 int main (int argc, char *argv[]){
     
@@ -80,24 +139,19 @@ int main (int argc, char *argv[]){
         return 1; 
     }
 
-
-    char file_system = NONE;
-
     //hem de distiguir si el format del sistema de fitxers és FAT16 o EXT2
     //nomes pot ser 1 dels 2
-    unsigned char *file = open(argv[2]);
-    unsigned char *offset = 0;
+    unsigned char *file = open(argv[2]); //aixo s'ha d'arreglar
+    unsigned int offset = 0;
 
     if ((file[0] == 0xEB) || (file[0] == 0xE9)){
         //FAT16
-        file_system = FAT16;
         //codi aqui...
 
         printFilesystemInfoFat16();
 
     } else if ((file[1024] | file[1025] | file[1026] | file[1027]) != 0){
         //EXT2
-        file_system = EXT2;
         offset += 1024;
 
         SuperBlock sb;
@@ -166,7 +220,7 @@ int main (int argc, char *argv[]){
         sb.s_feature_ro_compat = (unsigned int) file[offset];
         offset += 4;
         for (int i = 0; i < 16; i++){
-            sb.s_feature_ro_compat[i] = file[offset++];
+            sb.s_uuid[i] = file[offset++];
         }
         for (int i = 0; i < 16; i++){
             sb.s_volume_name[i] = file[offset++];
@@ -206,64 +260,6 @@ int main (int argc, char *argv[]){
     } else {
         printErrorFileSystem();
     }
-    
+
 	return 0;
-}
-
-void printFilesystemInfoExt2(SuperBlock sb) {
-
-    printf("\n");
-    printf("\n");
-    printf("------ Filesystem Information ------\n");
-    printf("\n");
-    printf("\n");
-    printf("Filesystem: EXT2\n");
-    printf("\n");
-
-    printf("INODE INFO\n");
-    printf("\tSize: ???\n");
-    printf("\tNum Inodes: ???\n");
-    printf("\tFirst Inode: ???\n");
-    printf("\tInodes Group: ???\n");
-    printf("\tFree Inodes: ???\n");
-
-    printf("INODE BLOCK\n");
-    printf("\tBlock size: ???\n");
-    printf("\tReserved blocks: ???\n");
-    printf("\tFree blocks: ???\n");
-    printf("\tTotal blocks: ???\n");
-    printf("\tFirst block: ???\n");
-    printf("\tGroup blocks: ???\n");
-    printf("\tGroup frags: ???\n");
-
-    printf("INFO VOLUME\n");
-    printf("\tVolume name: ???\n");
-    printf("\tLast Checked: ???\n");
-    printf("\tLast Mounted: ???\n");
-    printf("\tLast Written: ???\n");
-}
-
-void printFilesystemInfoFat16() {
-
-    printf("\n");
-    printf("\n");
-    printf("------ Filesystem Information ------\n");
-    printf("\n");
-    printf("\n");
-    printf("Filesystem: FAT16\n");
-    printf("\n");
-
-    printf("System name: ???\n");
-    printf("Sector size: ???\n");
-    printf("Sectors per cluster: ???\n");
-    printf("Reserved sectors: ???\n");
-    printf("# of FATs: ???\n");
-    printf("Max root entries: ???\n");
-    printf("Sectors per FAT: ???\n");
-    printf("Label: ???\n");
-}
-
-void printErrorFileSystem() {
-
-    printf("ERROR: Unknown file system\n");
 }

@@ -1,0 +1,1 @@
+"make" -> ./fsutils --info <file system>
