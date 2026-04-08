@@ -9,64 +9,64 @@ typedef struct _SuperBlock {
 
     unsigned int s_inodes_count;        //4 bytes
     unsigned int s_blocks_count;        //4 bytes
-    unsigned int s_r_blocks_count       //4 bytes
-    unsigned int s_free_blocks_count    //4 bytes
-    unsigned int s_free_inodes_count    //4 bytes
-    unsigned int s_first_data_block     //4 bytes
-    unsigned int s_log_block_size       //4 bytes
-    unsigned int s_log_frag_size        //4 bytes
-    unsigned int s_blocks_per_group     //4 bytes
-    unsigned int s_frags_per_group      //4 bytes
-    unsigned int s_inodes_per_group     //4 bytes
-    unsigned int s_mtime                //4 bytes
-    unsigned int s_wtime                //4 bytes
+    unsigned int s_r_blocks_count;      //4 bytes
+    unsigned int s_free_blocks_count;   //4 bytes
+    unsigned int s_free_inodes_count;   //4 bytes
+    unsigned int s_first_data_block;    //4 bytes
+    unsigned int s_log_block_size;      //4 bytes
+    unsigned int s_log_frag_size;       //4 bytes
+    unsigned int s_blocks_per_group;    //4 bytes
+    unsigned int s_frags_per_group;     //4 bytes
+    unsigned int s_inodes_per_group;    //4 bytes
+    unsigned int s_mtime;               //4 bytes
+    unsigned int s_wtime;               //4 bytes
 
-    unsigned short s_mnt_count          //2 bytes
-    unsigned short s_max_mnt_count      //2 bytes
-    unsigned short s_magic              //2 bytes
-    unsigned short s_state              //2 bytes
-    unsigned short s_errors             //2 bytes
-    unsigned short s_minor_rev_level    //2 bytes
+    unsigned short s_mnt_count;         //2 bytes
+    unsigned short s_max_mnt_count;     //2 bytes
+    unsigned short s_magic;             //2 bytes
+    unsigned short s_state;             //2 bytes
+    unsigned short s_errors;            //2 bytes
+    unsigned short s_minor_rev_level;   //2 bytes
 
-    unsigned int s_lastcheck            //4 bytes
-    unsigned int s_checkinterval        //4 bytes
-    unsigned int s_creator_os           //4 bytes
-    unsigned int s_rev_level            //4 bytes
+    unsigned int s_lastcheck;           //4 bytes
+    unsigned int s_checkinterval;       //4 bytes
+    unsigned int s_creator_os;          //4 bytes
+    unsigned int s_rev_level;           //4 bytes
 
-    unsigned short s_def_resuid         //2 bytes
-    unsigned short s_def_resgid         //2 bytes
+    unsigned short s_def_resuid;        //2 bytes
+    unsigned short s_def_resgid;        //2 bytes
 
     // EXT2_DYNAMIC_REV Specific
-    unsigned int s_first_ino            //4 bytes
-    unsigned short s_inode_size         //2 bytes
-    unsigned short s_block_group_nr     //2 bytes
-    unsigned int s_feature_compat       //4 bytes
-    unsigned int s_feature_incompat     //4 bytes
-    unsigned int s_feature_ro_compat    //4 bytes
+    unsigned int s_first_ino;           //4 bytes
+    unsigned short s_inode_size;        //2 bytes
+    unsigned short s_block_group_nr;    //2 bytes
+    unsigned int s_feature_compat;      //4 bytes
+    unsigned int s_feature_incompat;    //4 bytes
+    unsigned int s_feature_ro_compat;   //4 bytes
 
-    unsigned char[16] s_uuid            //16 bytes
-    unsigned char[16] s_volume_name     //16 bytes
-    unsigned char[64] s_last_mounted    //64 bytes
+    unsigned char[16] s_uuid;           //16 bytes
+    unsigned char[16] s_volume_name;    //16 bytes
+    unsigned char[64] s_last_mounted;   //64 bytes
 
-    unsigned int s_algo_bitmap          //4 bytes
+    unsigned int s_algo_bitmap;         //4 bytes
 
     // Performance Hints
-    unsigned char s_prealloc_blocks     //1byte
-    unsigned char s_prealloc_dir_blocks //1byte
+    unsigned char s_prealloc_blocks;    //1byte
+    unsigned char s_prealloc_dir_blocks;//1byte
 
     // Journaling Support
-    unsigned char[16] s_journal_uuid    //16 bytes
-    unsigned int s_journal_inum         //4 bytes
-    unsigned int s_journal_dev          //4 bytes
-    unsigned int s_last_orphan          //4 bytes
+    unsigned char[16] s_journal_uuid;   //16 bytes
+    unsigned int s_journal_inum;        //4 bytes
+    unsigned int s_journal_dev;         //4 bytes
+    unsigned int s_last_orphan;         //4 bytes
 
     // Directory Indexing Support
-    unsigned int[4] s_hash_seed         //16 bytes
-    unsigned char s_def_hash_version    //1 byte
+    unsigned int[4] s_hash_seed;        //16 bytes
+    unsigned char s_def_hash_version;   //1 byte
 
     // Other options
-    unsigned int s_default_mount_options//4 bytes
-    unsigned int s_first_meta_bg        //4 bytes
+    unsigned int s_default_mount_options;//4 bytes
+    unsigned int s_first_meta_bg;       //4 bytes
 } SuperBlock;
 
 int main (int argc, char *argv[]){
