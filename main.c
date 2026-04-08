@@ -223,6 +223,29 @@ void printFilesystemInfoExt2(SuperBlock sb) {
     printf("\n");
     printf("\n");
     printf("Filesystem: EXT2\n");
+    printf("\n");
+
+    printf("INODE INFO\n");
+    printf("\tSize: ???\n");
+    printf("\tNum Inodes: ???\n");
+    printf("\tFirst Inode: ???\n");
+    printf("\tInodes Group: ???\n");
+    printf("\tFree Inodes: ???\n");
+
+    printf("INODE BLOCK\n");
+    printf("\tBlock size: ???\n");
+    printf("\tReserved blocks: ???\n");
+    printf("\tFree blocks: ???\n");
+    printf("\tTotal blocks: ???\n");
+    printf("\tFirst block: ???\n");
+    printf("\tGroup blocks: ???\n");
+    printf("\tGroup frags: ???\n");
+
+    printf("INFO VOLUME\n");
+    printf("\tVolume name: ???\n");
+    printf("\tLast Checked: ???\n");
+    printf("\tLast Mounted: ???\n");
+    printf("\tLast Written: ???\n");
 }
 
 void printFilesystemInfo(const char *filesystem) {
