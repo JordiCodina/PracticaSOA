@@ -145,13 +145,13 @@ int main (int argc, char *argv[]){
     unsigned int offset = 0;
 
     if ((file[0] == 0xEB) || (file[0] == 0xE9)){
-        //FAT16
+        //FAT16 s'han de fer mes comprovacions
         //codi aqui...
 
         printFilesystemInfoFat16();
 
     } else if ((file[1024] | file[1025] | file[1026] | file[1027]) != 0){
-        //EXT2
+        //EXT2 s'ha de comprovar
         offset += 1024;
 
         SuperBlock sb;
@@ -244,7 +244,7 @@ int main (int argc, char *argv[]){
         offset += 4;
         sb.s_last_orphan = (unsigned int) file[offset];
         offset += 4;
-        for (int i = 0; 4 < 16; i++){
+        for (int i = 0; i < 16; i++){
             sb.s_hash_seed[i] = (unsigned int) file[offset];
             offset += 4;
         }
