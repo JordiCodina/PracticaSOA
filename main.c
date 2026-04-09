@@ -141,8 +141,25 @@ int main (int argc, char *argv[]){
 
     //hem de distiguir si el format del sistema de fitxers és FAT16 o EXT2
     //nomes pot ser 1 dels 2
-    unsigned char *file = open(argv[2]); //aixo s'ha d'arreglar
-    unsigned int offset = 0;
+  int fd = open(argv[2], O_RDONLY);
+    if (fd < 0) {
+        perror("open");
+        return 1;
+    }
+
+    SuperBlock sb;
+    lseek(fd, 1024, SEEK_SET);
+    read(fd, &sb, sizeof(SuperBlock));
+
+    if (sb.s_magic == 0xEF53) {
+        printFilesystemInfoExt2(sb);
+    } else {
+        printErrorFileSystem();
+    }
+
+    close(fd);
+
+   /* unsigned int offset = 0;
 
     if ((file[0] == 0xEB) || (file[0] == 0xE9)){
         //FAT16 s'han de fer mes comprovacions
@@ -259,7 +276,7 @@ int main (int argc, char *argv[]){
         printFilesystemInfoExt2(sb);
     } else {
         printErrorFileSystem();
-    }
+    }*/
 
 	return 0;
 }
