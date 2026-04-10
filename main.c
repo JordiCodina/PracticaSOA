@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
 
 #define NONE 0
 #define EXT2 1
@@ -8,19 +11,19 @@
 //Ext2 superblock
 typedef struct _SuperBlock {
 
-    unsigned int s_inodes_count;        //4 bytes
-    unsigned int s_blocks_count;        //4 bytes
-    unsigned int s_r_blocks_count;      //4 bytes
-    unsigned int s_free_blocks_count;   //4 bytes
-    unsigned int s_free_inodes_count;   //4 bytes
-    unsigned int s_first_data_block;    //4 bytes
-    unsigned int s_log_block_size;      //4 bytes
-    unsigned int s_log_frag_size;       //4 bytes
-    unsigned int s_blocks_per_group;    //4 bytes
-    unsigned int s_frags_per_group;     //4 bytes
-    unsigned int s_inodes_per_group;    //4 bytes
-    unsigned int s_mtime;               //4 bytes
-    unsigned int s_wtime;               //4 bytes
+    unsigned int s_inodes_count;        //4 bytes, number
+    unsigned int s_blocks_count;        //4 bytes, number
+    unsigned int s_r_blocks_count;      //4 bytes, number
+    unsigned int s_free_blocks_count;   //4 bytes, number
+    unsigned int s_free_inodes_count;   //4 bytes, number
+    unsigned int s_first_data_block;    //4 bytes, id number of the block that contains superblock
+    unsigned int s_log_block_size;      //4 bytes, block size = 1024 << s_log_block_size;
+    int s_log_frag_size;                //4 bytes, can be negative value
+    unsigned int s_blocks_per_group;    //4 bytes, number
+    unsigned int s_frags_per_group;     //4 bytes, number
+    unsigned int s_inodes_per_group;    //4 bytes, number
+    unsigned int s_mtime;               //4 bytes, Unix time
+    unsigned int s_wtime;               //4 bytes, Unix time
 
     unsigned short s_mnt_count;         //2 bytes
     unsigned short s_max_mnt_count;     //2 bytes
@@ -29,7 +32,7 @@ typedef struct _SuperBlock {
     unsigned short s_errors;            //2 bytes
     unsigned short s_minor_rev_level;   //2 bytes
 
-    unsigned int s_lastcheck;           //4 bytes
+    unsigned int s_lastcheck;           //4 bytes, Unix time
     unsigned int s_checkinterval;       //4 bytes
     unsigned int s_creator_os;          //4 bytes
     unsigned int s_rev_level;           //4 bytes
@@ -70,6 +73,15 @@ typedef struct _SuperBlock {
     unsigned int s_first_meta_bg;       //4 bytes
 } SuperBlock;
 
+//hack per passar de Unix Time a una cadena
+char * unixTimeToStringHack (time_t timeInt){
+
+    struct tm timestamp; //estructura timestamp de la llibreria <time.h>
+    localtime_r(&timeInt, &timestamp); //funcio de <time.h>. de int a timestamp
+    char *date = asctime(&timestamp); //funcio de <time.h>. de timestamp a cadema
+
+    return date;
+}
 void printFilesystemInfoExt2(SuperBlock sb) {
 
     printf("\n");
@@ -81,26 +93,31 @@ void printFilesystemInfoExt2(SuperBlock sb) {
     printf("\n");
 
     printf("INODE INFO\n");
-    printf("\tSize: ???\n");
+    printf("\tSize: %u\n", sb.s_inode_size);
     printf("\tNum Inodes: %u\n", sb.s_inodes_count);
-    printf("\tFirst Inode: ???\n");
-    printf("\tInodes Group: ???\n");
-    printf("\tFree Inodes: ???\n");
+    printf("\tFirst Inode: %u\n", sb.s_first_ino);
+    printf("\tInodes Group: %u\n", sb.s_inodes_per_group);
+    printf("\tFree Inodes: %u\n", sb.s_free_inodes_count);
 
-    printf("INODE BLOCK\n");
-    printf("\tBlock size: ???\n");
-    printf("\tReserved blocks: ???\n");
-    printf("\tFree blocks: ???\n");
-    printf("\tTotal blocks: ???\n");
-    printf("\tFirst block: ???\n");
-    printf("\tGroup blocks: ???\n");
-    printf("\tGroup frags: ???\n");
+    printf("INFO BLOCK\n");
+    printf("\tBlock size: %u\n", (1024 << sb.s_log_block_size));
+    printf("\tReserved blocks: %u\n", sb.s_r_blocks_count);
+    printf("\tFree blocks: %u\n", sb.s_free_blocks_count);
+    printf("\tTotal blocks: %u\n", sb.s_blocks_count);
+    printf("\tFirst block: %u\n", sb.s_first_data_block);
+    printf("\tGroup blocks: %u\n", sb.s_blocks_per_group);
+    printf("\tGroup frags: %u\n", sb.s_frags_per_group);
 
     printf("INFO VOLUME\n");
-    printf("\tVolume name: ???\n");
-    printf("\tLast Checked: ???\n");
-    printf("\tLast Mounted: ???\n");
-    printf("\tLast Written: ???\n");
+    printf("\tVolume name: %s\n", sb.s_volume_name);
+
+    char *date =  unixTimeToStringHack ((time_t) sb.s_lastcheck);
+    printf("\tLast Checked: %s", date);
+    date = unixTimeToStringHack ((time_t) sb.s_mtime);
+    printf("\tLast Mounted: %s", date);
+    date = unixTimeToStringHack ((time_t) sb.s_wtime);
+    printf("\tLast Written: %s", date);
+
 }
 
 void printFilesystemInfoFat16() {
@@ -129,7 +146,11 @@ void printErrorFileSystem() {
 }
 
 int main (int argc, char *argv[]){
-    
+
+    printf("sizeof(unsigned int): (%lu) (ha de ser 4)\n", sizeof(unsigned int));
+    printf("sizeof(unsigned short): (%lu) (ha de ser 2)\n", sizeof(unsigned short));
+    printf("sizeof(unsigned char): (%lu) (ha de ser 1)\n", sizeof(unsigned char));
+
     if (argc != 3) {
         printf("Incorrect arguments: /fsutils --info <file system>\n");
         return 1; 
@@ -141,9 +162,10 @@ int main (int argc, char *argv[]){
 
     //hem de distiguir si el format del sistema de fitxers és FAT16 o EXT2
     //nomes pot ser 1 dels 2
-  int fd = open(argv[2], O_RDONLY);
+    int fd = open(argv[2], O_RDONLY);
+
     if (fd < 0) {
-        perror("open");
+        perror(argv[2]);
         return 1;
     }
 
@@ -151,132 +173,14 @@ int main (int argc, char *argv[]){
     lseek(fd, 1024, SEEK_SET);
     read(fd, &sb, sizeof(SuperBlock));
 
-    if (sb.s_magic == 0xEF53) {
+    if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
+        //el camp s.magic indica si és un sistema de fitxers Ext32.
         printFilesystemInfoExt2(sb);
     } else {
         printErrorFileSystem();
     }
 
     close(fd);
-
-   /* unsigned int offset = 0;
-
-    if ((file[0] == 0xEB) || (file[0] == 0xE9)){
-        //FAT16 s'han de fer mes comprovacions
-        //codi aqui...
-
-        printFilesystemInfoFat16();
-
-    } else if ((file[1024] | file[1025] | file[1026] | file[1027]) != 0){
-        //EXT2 s'ha de comprovar
-        offset += 1024;
-
-        SuperBlock sb;
-        sb.s_inodes_count = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_blocks_count = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_r_blocks_count = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_free_blocks_count = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_free_inodes_count = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_first_data_block = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_log_block_size = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_log_frag_size = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_log_frag_size = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_blocks_per_group = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_frags_per_group = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_inodes_per_group = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_mtime = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_wtime = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_mnt_count = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_max_mnt_count = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_magic = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_state = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_errors = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_minor_rev_level = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_lastcheck = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_checkinterval = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_creator_os = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_rev_level = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_def_resuid = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_def_resgid = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_first_ino = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_inode_size = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_block_group_nr = (unsigned short) file[offset];
-        offset += 2;
-        sb.s_feature_compat = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_feature_incompat = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_feature_ro_compat = (unsigned int) file[offset];
-        offset += 4;
-        for (int i = 0; i < 16; i++){
-            sb.s_uuid[i] = file[offset++];
-        }
-        for (int i = 0; i < 16; i++){
-            sb.s_volume_name[i] = file[offset++];
-        }
-        for (int i = 0; i < 64; i++){
-            sb.s_last_mounted[i] = file[offset++];
-        }
-        sb.s_algo_bitmap = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_prealloc_blocks = (unsigned char) file[offset];
-        offset ++;
-        sb.s_prealloc_dir_blocks = (unsigned char) file[offset];
-        offset ++;
-        offset += 2;
-        for (int i = 0; i < 16; i++){
-            sb.s_journal_uuid[i] = file[offset++];
-        }
-        sb.s_journal_inum = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_journal_dev = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_last_orphan = (unsigned int) file[offset];
-        offset += 4;
-        for (int i = 0; i < 16; i++){
-            sb.s_hash_seed[i] = (unsigned int) file[offset];
-            offset += 4;
-        }
-        sb.s_def_hash_version = (unsigned char) file[offset];
-        offset ++;
-        offset += 3;
-        sb.s_default_mount_options = (unsigned int) file[offset];
-        offset += 4;
-        sb.s_first_meta_bg = (unsigned int) file[offset];
-        offset += 4;
-
-        printFilesystemInfoExt2(sb);
-    } else {
-        printErrorFileSystem();
-    }*/
 
 	return 0;
 }
