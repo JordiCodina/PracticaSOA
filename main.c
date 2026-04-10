@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -73,7 +74,40 @@ typedef struct _SuperBlock {
     unsigned int s_first_meta_bg;       //4 bytes
 } SuperBlock;
 
-//hack per passar de Unix Time a una cadena
+// hack to remove padding
+#pragma pack(push, 1)
+
+typedef struct _BPB {
+
+    //primers 36 bytes
+    unsigned char BS_jmpBoot[3];        //3 bytes
+    unsigned char BS_OEMName[8];        //8 bytes
+    unsigned short BPB_BytsPerSec;      //2 bytes
+    unsigned char BPB_SecPerClus;       //1 byte
+    unsigned short BPB_RsvdSecCnt;      //2 bytes
+    unsigned char BPB_NumFATs;          //1 byte
+    unsigned short BPB_RootEntCnt;      //2 bytes
+    unsigned short BPB_TotSec16;        //2 bytes
+    unsigned char BPB_Media;            //1 byte
+    unsigned short BPB_FATSz16;         //2 bytes
+    unsigned short BPB_SecPerTrk;       //2 bytes
+    unsigned short BPB_NumHeads;        //2 bytes
+    unsigned int BPB_HiddSec;           //4 bytes
+    unsigned int BPB_TotSec32;          //4 bytes
+
+    //Fat12 and Fat16 Structure Starting at Offset 36
+    unsigned char BS_DrvNum;            //1 byte
+    unsigned char BS_Reserved1;         //1 byte
+    unsigned char BS_BootSig;           //1 byte
+    unsigned int BS_VolID;              //4 bytes
+    unsigned char BS_VolLab[11];        //11 bytes
+    unsigned char BS_FilSysType[8];     //8 bytes
+} BPB;
+
+// stop hack to remove padding
+#pragma pack(pop)
+
+//hack per passar de Unix Time a una cadena.
 char * unixTimeToStringHack (time_t timeInt){
 
     struct tm timestamp; //estructura timestamp de la llibreria <time.h>
@@ -82,6 +116,15 @@ char * unixTimeToStringHack (time_t timeInt){
 
     return date;
 }
+//generear el mateix pero amb '\0' al final.
+char *generateStringWithZeroAtEnd (unsigned char str[], unsigned long strSize){
+    char *buf = malloc (strSize + 1);
+    memcpy(buf, str, strSize);
+    buf[strSize] = '\0';
+
+    return buf;
+}
+
 void printFilesystemInfoExt2(SuperBlock sb) {
 
     printf("\n");
@@ -109,9 +152,11 @@ void printFilesystemInfoExt2(SuperBlock sb) {
     printf("\tGroup frags: %u\n", sb.s_frags_per_group);
 
     printf("INFO VOLUME\n");
-    printf("\tVolume name: %s\n", sb.s_volume_name);
+    char *buf = generateStringWithZeroAtEnd (sb.s_volume_name, sizeof(sb.s_volume_name));
+    printf("\tVolume name: %s\n", buf);
+    free(buf);
 
-    char *date =  unixTimeToStringHack ((time_t) sb.s_lastcheck);
+    char *date = unixTimeToStringHack ((time_t) sb.s_lastcheck);
     printf("\tLast Checked: %s", date);
     date = unixTimeToStringHack ((time_t) sb.s_mtime);
     printf("\tLast Mounted: %s", date);
@@ -120,7 +165,7 @@ void printFilesystemInfoExt2(SuperBlock sb) {
 
 }
 
-void printFilesystemInfoFat16() {
+void printFilesystemInfoFat16(BPB bpb) {
 
     printf("\n");
     printf("\n");
@@ -130,14 +175,18 @@ void printFilesystemInfoFat16() {
     printf("Filesystem: FAT16\n");
     printf("\n");
 
-    printf("System name: ???\n");
-    printf("Sector size: ???\n");
-    printf("Sectors per cluster: ???\n");
-    printf("Reserved sectors: ???\n");
-    printf("# of FATs: ???\n");
-    printf("Max root entries: ???\n");
-    printf("Sectors per FAT: ???\n");
-    printf("Label: ???\n");
+    char *buf = generateStringWithZeroAtEnd (bpb.BS_OEMName, sizeof(bpb.BS_OEMName));
+    printf("System name: %s\n", bpb.BS_OEMName);
+    free(buf);
+    printf("Sector size: %u\n", bpb.BPB_BytsPerSec);
+    printf("Sectors per cluster: %u\n", bpb.BPB_SecPerClus);
+    printf("Reserved sectors: %u\n", bpb.BPB_RsvdSecCnt);
+    printf("# of FATs: %u\n", bpb.BPB_NumFATs);
+    printf("Max root entries: %u\n", bpb.BPB_RootEntCnt);
+    printf("Sectors per FAT: %u\n", bpb.BPB_TotSec16);
+    buf = generateStringWithZeroAtEnd (bpb.BS_VolLab, sizeof(bpb.BS_VolLab));
+    printf("Label: %s\n", buf);
+    free(buf);
 }
 
 void printErrorFileSystem() {
@@ -147,9 +196,12 @@ void printErrorFileSystem() {
 
 int main (int argc, char *argv[]){
 
+    /*
     printf("sizeof(unsigned int): (%lu) (ha de ser 4)\n", sizeof(unsigned int));
     printf("sizeof(unsigned short): (%lu) (ha de ser 2)\n", sizeof(unsigned short));
     printf("sizeof(unsigned char): (%lu) (ha de ser 1)\n", sizeof(unsigned char));
+    printf("sizeof(BPB): (%lu) (ha de ser 62)\n", sizeof(BPB));
+    */
 
     if (argc != 3) {
         printf("Incorrect arguments: /fsutils --info <file system>\n");
@@ -173,9 +225,16 @@ int main (int argc, char *argv[]){
     lseek(fd, 1024, SEEK_SET);
     read(fd, &sb, sizeof(SuperBlock));
 
+    BPB bpb;
+    lseek(fd, 0, SEEK_SET);
+    read(fd, &bpb, sizeof(BPB));
+
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
         //el camp s.magic indica si és un sistema de fitxers Ext32.
         printFilesystemInfoExt2(sb);
+    } else if ((bpb.BS_jmpBoot[0] == 0xEB) | (bpb.BS_jmpBoot[0] == 0xE9)) {
+        //això s'ha d'arreglar. s'ha mirar quina és la manera estandard de veure si algo es FAT16
+        printFilesystemInfoFat16(bpb);
     } else {
         printErrorFileSystem();
     }
