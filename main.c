@@ -5,10 +5,6 @@
 #include <unistd.h>
 #include <time.h>
 
-#define NONE 0
-#define EXT2 1
-#define FAT16 2
-
 //Ext2 superblock
 typedef struct _SuperBlock {
 
