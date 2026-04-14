@@ -179,7 +179,7 @@ void printFilesystemInfoFat16(BPB bpb) {
     printf("Reserved sectors: %u\n", bpb.BPB_RsvdSecCnt);
     printf("# of FATs: %u\n", bpb.BPB_NumFATs);
     printf("Max root entries: %u\n", bpb.BPB_RootEntCnt);
-    printf("Sectors per FAT: %u\n", bpb.BPB_TotSec16);
+    printf("Sectors per FAT: %u\n", bpb.BPB_FATSz16);
     buf = generateStringWithZeroAtEnd (bpb.BS_VolLab, sizeof(bpb.BS_VolLab));
     printf("Label: %s\n", buf);
     free(buf);
@@ -225,7 +225,7 @@ int main (int argc, char *argv[]){
     unsigned short fat16_confirm;
     lseek(fd, 510, SEEK_SET);
     read(fd, &fat16_confirm, sizeof(short));
-
+    printf("%x\n", fat16_confirm);
     char file_system = 0;
 
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
