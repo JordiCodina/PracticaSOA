@@ -225,7 +225,7 @@ int main (int argc, char *argv[]){
     unsigned short fat16_confirm;
     lseek(fd, 510, SEEK_SET);
     read(fd, &fat16_confirm, sizeof(short));
-    printf("%x", fat16_confirm);
+
     char file_system = 0;
 
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
