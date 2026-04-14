@@ -220,14 +220,19 @@ int main (int argc, char *argv[]){
     BPB bpb;
     lseek(fd, 0, SEEK_SET);
     read(fd, &bpb, sizeof(BPB));
+        lseek(fd, 0, SEEK_SET);
+
+    char fat16_confirm[2];
+    lseek(fd, 510, SEEK_SET);
+    read(fd, fat16_confirm, sizeof(short));
 
     char file_system = 0;
 
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
         //el camp s.magic indica si és un sistema de fitxers Ext32.
         file_system = 1;
-    } else if ((bpb.BS_jmpBoot[0] == 0xEB) | (bpb.BS_jmpBoot[0] == 0xE9)) {
-        //això s'ha d'arreglar. s'ha mirar quina és la manera estandard de veure si algo es FAT16
+    } else if ((fat16_confirm[0] == 0x55) | (fat16_confirm[1] == 0xAA)) {
+        //sector[510] equals 0x55, and sector[511] equals 0xAA
         file_system = 2;
     } else { //no s'ha detectat ni EXT2 ni FAT16
         printErrorFileSystem();
