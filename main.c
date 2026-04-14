@@ -200,13 +200,9 @@ int main (int argc, char *argv[]){
     */
 
     if (argc != 3) {
-        printf("Incorrect arguments: /fsutils --info <file system>\n");
+        printf("Incorrect arguments: /fsutils --command <file system>\n");
         return 1; 
     }  
-    if (strcmp(argv[1], "--info") != 0) {
-        printf("Incorrect arguments: /fsutils --info <file system>\n");
-        return 1; 
-    }
 
     //hem de distiguir si el format del sistema de fitxers és FAT16 o EXT2
     //nomes pot ser 1 dels 2
@@ -225,14 +221,41 @@ int main (int argc, char *argv[]){
     lseek(fd, 0, SEEK_SET);
     read(fd, &bpb, sizeof(BPB));
 
+    char file_system = 0;
+
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
         //el camp s.magic indica si és un sistema de fitxers Ext32.
-        printFilesystemInfoExt2(sb);
+        file_system = 1;
     } else if ((bpb.BS_jmpBoot[0] == 0xEB) | (bpb.BS_jmpBoot[0] == 0xE9)) {
         //això s'ha d'arreglar. s'ha mirar quina és la manera estandard de veure si algo es FAT16
-        printFilesystemInfoFat16(bpb);
-    } else {
+        file_system = 2;
+    } else { //no s'ha detectat ni EXT2 ni FAT16
         printErrorFileSystem();
+        return 1;
+    }
+
+    if (strcmp(argv[1], "--info") == 0) {
+        switch (file_system){
+            case 1:
+            printFilesystemInfoExt2(sb);
+            break;
+            case 2:
+            printFilesystemInfoFat16(bpb);
+            break;
+        }
+    } else if (strcmp(argv[1], "--tree") == 0) {
+        switch (file_system){
+            case 1:
+            //tree...
+            break;
+            case 2:
+            //tree...
+            break;
+        }
+    } else {
+        printf("Incorrect arguments: /fsutils --command <file system>\n");
+        close(fd);
+        return 1; 
     }
 
     close(fd);
