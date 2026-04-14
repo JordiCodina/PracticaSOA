@@ -220,18 +220,18 @@ int main (int argc, char *argv[]){
     BPB bpb;
     lseek(fd, 0, SEEK_SET);
     read(fd, &bpb, sizeof(BPB));
-        lseek(fd, 0, SEEK_SET);
+    lseek(fd, 0, SEEK_SET);
 
-    char fat16_confirm[2];
+    unsigned short fat16_confirm;
     lseek(fd, 510, SEEK_SET);
-    read(fd, fat16_confirm, sizeof(short));
-
+    read(fd, &fat16_confirm, sizeof(short));
+    printf("%x", fat16_confirm);
     char file_system = 0;
 
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
         //el camp s.magic indica si és un sistema de fitxers Ext32.
         file_system = 1;
-    } else if ((fat16_confirm[0] == 0x55) | (fat16_confirm[1] == 0xAA)) {
+    } else if ((fat16_confirm & 0x0000FFFF) == 0xAA55) {
         //sector[510] equals 0x55, and sector[511] equals 0xAA
         file_system = 2;
     } else { //no s'ha detectat ni EXT2 ni FAT16
