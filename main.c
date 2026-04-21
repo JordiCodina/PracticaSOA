@@ -1,61 +1,14 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
+#include <math.h>
+
+#include "basic_func.h"
 #include "ext2.h"
-
-// hack to remove padding
-#pragma pack(push, 1)
-
-typedef struct _BPB {
-
-    //primers 36 bytes
-    unsigned char BS_jmpBoot[3];        //3 bytes
-    unsigned char BS_OEMName[8];        //8 bytes
-    unsigned short BPB_BytsPerSec;      //2 bytes
-    unsigned char BPB_SecPerClus;       //1 byte
-    unsigned short BPB_RsvdSecCnt;      //2 bytes
-    unsigned char BPB_NumFATs;          //1 byte
-    unsigned short BPB_RootEntCnt;      //2 bytes
-    unsigned short BPB_TotSec16;        //2 bytes
-    unsigned char BPB_Media;            //1 byte
-    unsigned short BPB_FATSz16;         //2 bytes
-    unsigned short BPB_SecPerTrk;       //2 bytes
-    unsigned short BPB_NumHeads;        //2 bytes
-    unsigned int BPB_HiddSec;           //4 bytes
-    unsigned int BPB_TotSec32;          //4 bytes
-
-    //Fat12 and Fat16 Structure Starting at Offset 36
-    unsigned char BS_DrvNum;            //1 byte
-    unsigned char BS_Reserved1;         //1 byte
-    unsigned char BS_BootSig;           //1 byte
-    unsigned int BS_VolID;              //4 bytes
-    unsigned char BS_VolLab[11];        //11 bytes
-    unsigned char BS_FilSysType[8];     //8 bytes
-} BPB;
-
-// stop hack to remove padding
-#pragma pack(pop)
-
-void printFilesystemInfoFat16(BPB bpb) {
-
-    printf("\n");
-    printf("\n");
-    printf("------ Filesystem Information ------\n");
-    printf("\n");
-    printf("\n");
-    printf("Filesystem: FAT16\n");
-    printf("\n");
-
-    char *buf = generateStringWithZeroAtEnd (bpb.BS_OEMName, sizeof(bpb.BS_OEMName));
-    printf("System name: %s\n", bpb.BS_OEMName);
-    free(buf);
-    printf("Sector size: %u\n", bpb.BPB_BytsPerSec);
-    printf("Sectors per cluster: %u\n", bpb.BPB_SecPerClus);
-    printf("Reserved sectors: %u\n", bpb.BPB_RsvdSecCnt);
-    printf("# of FATs: %u\n", bpb.BPB_NumFATs);
-    printf("Max root entries: %u\n", bpb.BPB_RootEntCnt);
-    printf("Sectors per FAT: %u\n", bpb.BPB_FATSz16);
-    buf = generateStringWithZeroAtEnd (bpb.BS_VolLab, sizeof(bpb.BS_VolLab));
-    printf("Label: %s\n", buf);
-    free(buf);
-}
+#include "fat16.h"
 
 void printErrorFileSystem() {
 
@@ -99,7 +52,7 @@ int main (int argc, char *argv[]){
     unsigned short fat16_confirm;
     lseek(fd, 510, SEEK_SET);
     read(fd, &fat16_confirm, sizeof(short));
-    printf("%x\n", fat16_confirm);
+
     char file_system = 0;
 
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
@@ -128,7 +81,7 @@ int main (int argc, char *argv[]){
                 treeExt2(sb,fd);
             break;
             case 2:
-            //tree...
+                treeFat16 (bpb, fd);
             break;
         }
     } else {
@@ -138,6 +91,5 @@ int main (int argc, char *argv[]){
     }
 
     close(fd);
-
 	return 0;
 }

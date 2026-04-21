@@ -1,5 +1,3 @@
-#include "basic_func.h"
-
 //Ext2 superblock
 typedef struct _SuperBlock {
 
