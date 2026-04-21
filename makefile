@@ -1,17 +1,15 @@
 CC = gcc
-CFLAGS = -g
-EXTRAFLAGS = -Wall -Wextra
+CFLAGS = -g -Wall -Wextra -MMD
 TARGET = fsutils
+
 SRCS = main.c
+OBJS = $(SRCS:.c=.o)
+DEPS = $(SRCS:.c=.d)
 
-$(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS) $(EXTRAFLAGS)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
 
-valA: $(TARGET)
-	valgrind --dsymutil=yes --track-origins=yes --leak-check=full --track-fds=yes --show-reachable=yes --show-leak-kinds=all -s ./$(TARGET)
-
-a: $(TARGET)
-	./$(TARGET)
+-include $(DEPS)
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(OBJS) $(DEPS)
