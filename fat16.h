@@ -1,3 +1,5 @@
+#define ATTR_DIRECTORY 0x10
+
 // hack to remove padding
 #pragma pack(push, 1)
 
@@ -28,6 +30,23 @@ typedef struct _BPB {
     unsigned char BS_FilSysType[8];     //8 bytes
 } BPB;
 
+typedef struct _RootDir {
+
+    unsigned char DIR_Name[11];         //11 bytes
+    unsigned char DIR_Attr;             //1 byte
+    unsigned char DIR_NTRes;            //1 byte
+    unsigned char DIR_CrtTimeTenth;     //1 byte
+    unsigned short DIR_CrtTime;         //2 bytes
+    unsigned short DIR_CrtDate;         //2 bytes
+    unsigned short DIR_LstAccDate;      //2 bytes
+    unsigned short DIR_FstClusHI;       //2 bytes
+    unsigned short DIR_WrtTime;         //2 bytes
+    unsigned short DIR_WrtDate;         //2 bytes
+    unsigned short DIR_FstClusLO;       //2 bytes
+    unsigned int DIR_FileSize;          //4 bytes
+
+} RootDir;
+
 // stop hack to remove padding
 #pragma pack(pop)
 
@@ -55,51 +74,117 @@ void printFilesystemInfoFat16(BPB bpb) {
     free(buf);
 }
 
+void treeFat16Recursiu (BPB bpb, 
+    int fd, 
+    unsigned int dataSectionBegin,
+    unsigned int Offset,
+    int nivell,
+    int* columnes) {
+
+    RootDir dr;
+    RootDir dr_next;
+
+    while (1) {
+
+        lseek(fd, Offset, SEEK_SET);
+        read(fd, &dr, sizeof(RootDir));
+        read(fd, &dr_next, sizeof(RootDir)); //seguent
+        Offset = Offset + 32;
+
+        if (dr.DIR_Name[0] == 0x00){
+            //ja no hi ha més arxius
+            return;
+        }
+        if (dr.DIR_Name[0] == 0xE5){
+            //arxiu borrat
+            continue;
+        }
+        if ((dr.DIR_Attr & 0x0F) == 0x0F) {
+            continue; // saltar LFN long file name
+        }
+        if (dr.DIR_Attr & ATTR_DIRECTORY) {
+            // ignorar les carpetes "." y ".."
+            if (dr.DIR_Name[0] == '.') {
+                continue;
+            }
+        }
+
+        for (int i = 0; i < nivell; i++) {
+            if (columnes[i]){
+                printf("│   ");
+            }
+            else{ 
+                printf("    ");
+            }
+        }
+
+        if (dr_next.DIR_Name[0] == 0x00){
+            //si es el ultim de la carpeta
+            printf("└── %s\n", dr.DIR_Name);
+            columnes[nivell] = 0;
+        } else {
+            printf("├── %s\n", dr.DIR_Name);
+        }
+
+        if (dr.DIR_Attr & ATTR_DIRECTORY) {
+            unsigned int iba = dataSectionBegin + ((dr.DIR_FstClusLO - 2) * bpb.BPB_SecPerClus);
+            unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
+            columnes[nivell + 1] = 1; 
+            treeFat16Recursiu (bpb, fd, dataSectionBegin, fileOffset, nivell + 1, columnes);
+        } 
+    }
+}
+
 void treeFat16 (BPB bpb, int fd) {
 
-    printf("hola q tal %d %d\n", fd, bpb.BPB_BytsPerSec);
+    //fat 16 structure:
+    //reserved | file allocation tables | Root Dir | Data
+
+    //reserved -> bpb.BPB_RsvdSecCnt (hauria de ser 1) in SECTORS
+    //printf("bpb.BPB_RsvdSecCnt: %u\n", bpb.BPB_RsvdSecCnt);
+
+    //file allocation tables -> fat count * sectors per fat in SECTORS
+    unsigned int fileAllocationTables_size = bpb.BPB_NumFATs * bpb.BPB_FATSz16;
+    //printf("fileAllocationTables_size: %u\n", fileAllocationTables_size);
+
+    //Root Dir in SECTORS
+    unsigned int RootDirSectors = ((bpb.BPB_RootEntCnt * 32) + bpb.BPB_BytsPerSec - 1) / bpb.BPB_BytsPerSec;
+    //printf("RootDirSectors: %u\n", RootDirSectors);
     
-    int RootDirSectors = ((bpb.BPB_RootEntCnt * 32) + (bpb.BPB_BytsPerSec - 1)) / bpb.BPB_BytsPerSec;
+    //data section begin in SECTORS
+    unsigned int dataSectionBegin = bpb.BPB_RsvdSecCnt + fileAllocationTables_size + RootDirSectors;
+    //printf("dataSectionBegin: %u\n", dataSectionBegin);
 
-    printf("BPB_FATSz16: %d\n", bpb.BPB_FATSz16);
+    unsigned int RootDirOffset = (bpb.BPB_RsvdSecCnt + fileAllocationTables_size) * bpb.BPB_BytsPerSec;
 
-    int FirstDataSector = bpb.BPB_RsvdSecCnt + (bpb.BPB_NumFATs * bpb.BPB_FATSz16) + RootDirSectors;
-
-    int DataSec = bpb.BPB_TotSec16 - (bpb.BPB_RsvdSecCnt + (bpb.BPB_NumFATs * bpb.BPB_FATSz16) + RootDirSectors);
-
-    int CountofClusters = (int) floor( (float) DataSec /  (float) bpb.BPB_SecPerClus);
-
-    printf("RootDirSectors: %d, FirstDataSector: %d\n", RootDirSectors, FirstDataSector);
-
-
-    if(CountofClusters < 4085) {
-    /* Volume is FAT12 */
-        printf("ERROR\n");
-        return;
-    } else if(CountofClusters < 65525) {
-        /* Volume is FAT16 */
-        printf("Efectivament\n");
-    } else {
-        /* Volume is FAT32 */
-        printf("ERROR\n");
-        return;
+    int columnes[32];
+    for(int i = 0; i < 32; i++) {
+        columnes[i] = 0;
     }
+    columnes[0] = 1;
 
-    int cluster_n = 10; //per exemple
-
-    int FATOffset = cluster_n * 2;
-
-    int ThisFATSecNum = bpb.BPB_RsvdSecCnt + (FATOffset / bpb.BPB_BytsPerSec);
-    int ThisFATEntOffset = FATOffset % bpb.BPB_BytsPerSec;
-
-    #define WORD unsigned short
-    #define DWORD unsigned int
-
-    unsigned char SecBuff [128];
-
-    int FAT16ClusEntryVal = *((WORD *) &SecBuff[ThisFATEntOffset]);
-
-    *((WORD *) &SecBuff[ThisFATEntOffset]) = FAT16ClusEntryVal;
-
-    printf("SecBuff: %s", SecBuff);
+    printf(".\n");
+    treeFat16Recursiu(bpb, fd, dataSectionBegin, RootDirOffset, 0, columnes);
 }
+
+        /*
+        //if we wanted to read the file
+        unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
+        unsigned char *cluster = malloc (bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec);
+        lseek(fd, fileOffset, SEEK_SET);
+        read(fd, cluster, sizeof(bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec));
+        printf("cluster: [%c][%c][%c]", cluster[0], cluster[1], cluster[2]);
+        free(cluster);
+        */
+        /*
+        //then we have to look at the fat
+        unsigned int FATOffset = (bpb.BPB_RsvdSecCnt) * bpb.BPB_BytsPerSec;
+        //FAT16 -> each entry is 16 bits
+        lseek(fd, FATOffset + (sizeof(short) * dr.DIR_FstClusLO), SEEK_SET);
+        unsigned short entry_card = 0;
+        while (entry_card != 65535){ //FFFF marks EOF
+            read(fd, &entry_card, sizeof(unsigned short));
+            printf("entry_card: %u\n", entry_card);
+        }
+        printf("EOF\n");
+        */

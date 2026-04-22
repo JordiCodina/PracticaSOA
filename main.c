@@ -11,7 +11,6 @@
 #include "fat16.h"
 
 void printErrorFileSystem() {
-
     printf("ERROR: Unknown file system\n");
 }
 
