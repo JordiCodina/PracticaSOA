@@ -254,6 +254,28 @@ void processBlock (SuperBlock sb, int fd, unsigned int blockNum, int nivell,int*
          
     }
 
+
+    void processIndirect(SuperBlock sb, int fd, unsigned int blockNum, int level, int nivell, int* elements) {
+
+    if (blockNum == 0) return;
+
+    unsigned int blockSize = 1024 << sb.s_log_block_size;
+    unsigned long offset = (unsigned long)blockNum * blockSize;
+
+    lseek(fd, offset, SEEK_SET);
+    int total = blockSize / 4;
+    for (int i = 0; i < total; i++) {
+        int ptr;
+        read(fd, &ptr, 4);
+        if (ptr == 0) continue;
+        if (level == 1) {
+            processBlock(sb, fd, ptr, nivell, elements);
+        } else {
+            processIndirect(sb, fd, ptr, level-1, nivell, elements);
+        }
+    }
+}
+
 void treeExt2Recursiu (SuperBlock sb, int fd, unsigned int inodeNum, int nivell, int* elements) {
 
     ext2_inode currentInode = readInode(fd, sb, inodeNum);
@@ -265,8 +287,15 @@ void treeExt2Recursiu (SuperBlock sb, int fd, unsigned int inodeNum, int nivell,
             processBlock(sb, fd, currentInode.i_block[i], nivell, elements);
         }
     }
-    // blocs indirectes 12 13 14 ???
-}
+   if (currentInode.i_block[12] != 0)
+        processIndirect(sb, fd, currentInode.i_block[12], 1, nivell, elements);
+
+    if (currentInode.i_block[13] != 0)
+        processIndirect(sb, fd, currentInode.i_block[13], 2, nivell, elements);
+
+    if (currentInode.i_block[14] != 0)
+        processIndirect(sb, fd, currentInode.i_block[14], 3, nivell, elements);
+    }
 
 
 void treeExt2(SuperBlock sb, int fd) {
