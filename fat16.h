@@ -74,6 +74,43 @@ void printFilesystemInfoFat16(BPB bpb) {
     free(buf);
 }
 
+char *fatNameAString(unsigned char nomFat[11]) {
+
+    int pos = 0;
+    char *nomString = (char *) malloc (13);
+
+    for (int i = 0; i < 8; i++) {
+        if (nomFat[i] != ' '){
+            if ((nomFat[i] <= 'Z') && (nomFat[i] >= 'A')) {
+                nomString[pos++] = nomFat[i] - 'A' + 'a';
+            } else {
+                nomString[pos++] = nomFat[i];
+            }
+        }
+    }
+
+    char hasExt = 0;
+    for (int i = 8; i < 11; i++) {
+        if (nomFat[i] != ' ')
+            hasExt = 1;
+    }
+
+    if (hasExt) {
+        nomString[pos++] = '.';
+        for (int i = 8; i < 11; i++) {
+            if (nomFat[i] != ' '){
+                if ((nomFat[i] <= 'Z') && (nomFat[i] >= 'A')) {
+                    nomString[pos++] = nomFat[i] - 'A' + 'a';
+                } else {
+                    nomString[pos++] = nomFat[i];
+                }
+            }
+        }
+    }
+    nomString[pos] = '\0';
+    return nomString;
+}
+
 void treeFat16Recursiu (BPB bpb, 
     int fd, 
     unsigned int dataSectionBegin,
@@ -118,13 +155,19 @@ void treeFat16Recursiu (BPB bpb,
             }
         }
 
+        while (dr_next.DIR_Name[0] == 0xE5){ //el seguent es arxiu borrat
+            read(fd, &dr_next, sizeof(RootDir)); //seguent
+        }
+
+        char *nomReal = fatNameAString(dr.DIR_Name);
         if (dr_next.DIR_Name[0] == 0x00){
             //si es el ultim de la carpeta
-            printf("└── %s\n", dr.DIR_Name);
+            printf("└── %s\n", nomReal);
             columnes[nivell] = 0;
         } else {
-            printf("├── %s\n", dr.DIR_Name);
+            printf("├── %s\n", nomReal);
         }
+        free(nomReal);
 
         if (dr.DIR_Attr & ATTR_DIRECTORY) {
             unsigned int iba = dataSectionBegin + ((dr.DIR_FstClusLO - 2) * bpb.BPB_SecPerClus);
@@ -136,6 +179,126 @@ void treeFat16Recursiu (BPB bpb,
 }
 
 void treeFat16 (BPB bpb, int fd) {
+
+    unsigned int fileAllocationTables_size = bpb.BPB_NumFATs * bpb.BPB_FATSz16;
+    unsigned int RootDirSectors = ((bpb.BPB_RootEntCnt * 32) + bpb.BPB_BytsPerSec - 1) / bpb.BPB_BytsPerSec;
+    unsigned int dataSectionBegin = bpb.BPB_RsvdSecCnt + fileAllocationTables_size + RootDirSectors;
+    unsigned int RootDirOffset = (bpb.BPB_RsvdSecCnt + fileAllocationTables_size) * bpb.BPB_BytsPerSec;
+
+    int columnes[32];
+    for(int i = 0; i < 32; i++) {
+        columnes[i] = 0;
+    }
+    columnes[0] = 1;
+
+    printf(".\n");
+    treeFat16Recursiu(bpb, fd, dataSectionBegin, RootDirOffset, 0, columnes);
+}
+
+void llegirFitxerFat16 (int fd, BPB bpb, unsigned int dataSectionBegin, RootDir dr){
+
+        unsigned char *cluster = malloc (bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec);
+        unsigned short currentCluster = dr.DIR_FstClusLO;
+
+        do {
+
+            unsigned int iba = dataSectionBegin + ((currentCluster - 2) * bpb.BPB_SecPerClus);
+            unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
+            unsigned int clusterSize = bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec;
+            lseek(fd, fileOffset, SEEK_SET);
+            read(fd, cluster, clusterSize);
+
+            printf("%s", cluster); //cat del cluester de fitxer
+
+            unsigned int FATOffset = bpb.BPB_RsvdSecCnt * bpb.BPB_BytsPerSec;
+            lseek(fd, FATOffset + (sizeof(unsigned short) * currentCluster), SEEK_SET);
+            read(fd, &currentCluster, sizeof(unsigned short));
+
+        } while (currentCluster != 65535); //FFFF marks EOF, FAT16
+        free(cluster);
+}
+
+void buscarFixerFat16 (BPB bpb, 
+    int fd, 
+    unsigned int dataSectionBegin,
+    unsigned int Offset,
+    char *fitxer,
+    char *arxiuTrobat) {
+
+    RootDir dr;
+
+    while (1) {
+
+        lseek(fd, Offset, SEEK_SET);
+        read(fd, &dr, sizeof(RootDir));
+        Offset = Offset + 32;
+
+        if (dr.DIR_Name[0] == 0x00){
+            //ja no hi ha més arxius
+            return;
+        }
+        if (dr.DIR_Name[0] == 0xE5){
+            //arxiu borrat
+            continue;
+        }
+        if ((dr.DIR_Attr & 0x0F) == 0x0F) {
+            continue; // saltar LFN long file name
+        }
+        if (dr.DIR_Attr & ATTR_DIRECTORY) {
+            // ignorar les carpetes "." y ".."
+            if (dr.DIR_Name[0] == '.') {
+                continue;
+            }
+        }
+
+        if (dr.DIR_Attr & ATTR_DIRECTORY) {
+            unsigned int iba = dataSectionBegin + ((dr.DIR_FstClusLO - 2) * bpb.BPB_SecPerClus);
+            unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
+            buscarFixerFat16 (bpb, fd, dataSectionBegin, fileOffset, fitxer, arxiuTrobat);
+        } else {
+            char *nouNom = fatNameAString(dr.DIR_Name);
+            if (strcmp(nouNom, fitxer) == 0){
+                llegirFitxerFat16(fd, bpb, dataSectionBegin, dr);
+                (*arxiuTrobat) = 1;
+            }
+            free(nouNom);
+        }
+    }
+}
+
+char *nouNomFitxer (char *fitxer, int fitLen){
+
+    char *newNom = malloc (fitLen + 1);
+
+    for (int i = 0; i < fitLen; i++){
+        if ((fitxer[i] <= 'z') && (fitxer[i] >= 'a')) {
+            newNom[i] = (fitxer[i] - 'a' + 'A');
+        } else {
+            newNom[i] = fitxer[i];
+        }
+    }
+    newNom[fitLen] = '\0';
+
+    return newNom;
+}
+
+void catFat16 (BPB bpb, int fd, char *fitxer){
+
+    unsigned int fileAllocationTables_size = bpb.BPB_NumFATs * bpb.BPB_FATSz16;
+    unsigned int RootDirSectors = ((bpb.BPB_RootEntCnt * 32) + bpb.BPB_BytsPerSec - 1) / bpb.BPB_BytsPerSec;
+    unsigned int dataSectionBegin = bpb.BPB_RsvdSecCnt + fileAllocationTables_size + RootDirSectors;
+    unsigned int RootDirOffset = (bpb.BPB_RsvdSecCnt + fileAllocationTables_size) * bpb.BPB_BytsPerSec;
+
+    char *fixerNom = generateStringWithZeroAtEnd ((unsigned char *) fitxer, strlen(fitxer));
+    char arxiuTrobat = 0;
+    buscarFixerFat16(bpb, fd, dataSectionBegin, RootDirOffset, fixerNom, &arxiuTrobat);
+
+    if (!arxiuTrobat){
+        printf("No s'ha trobat el fitxer.\n");
+    }
+    free(fixerNom);
+}
+        /*
 
     //fat 16 structure:
     //reserved | file allocation tables | Root Dir | Data
@@ -157,17 +320,6 @@ void treeFat16 (BPB bpb, int fd) {
 
     unsigned int RootDirOffset = (bpb.BPB_RsvdSecCnt + fileAllocationTables_size) * bpb.BPB_BytsPerSec;
 
-    int columnes[32];
-    for(int i = 0; i < 32; i++) {
-        columnes[i] = 0;
-    }
-    columnes[0] = 1;
-
-    printf(".\n");
-    treeFat16Recursiu(bpb, fd, dataSectionBegin, RootDirOffset, 0, columnes);
-}
-
-        /*
         //if we wanted to read the file
         unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
         unsigned char *cluster = malloc (bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec);

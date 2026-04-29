@@ -16,7 +16,7 @@ void printErrorFileSystem() {
 
 //TREE EXT2
 
-int main (int argc, char *argv[]){
+int main (int argc,char *argv[]){
 
     /*
     printf("sizeof(unsigned int): (%lu) (ha de ser 4)\n", sizeof(unsigned int));
@@ -25,7 +25,7 @@ int main (int argc, char *argv[]){
     printf("sizeof(BPB): (%lu) (ha de ser 62)\n", sizeof(BPB));
     */
 
-    if (argc != 3) {
+    if (argc < 3) {
         printf("Incorrect arguments: /fsutils --command <file system>\n");
         return 1; 
     }  
@@ -82,6 +82,20 @@ int main (int argc, char *argv[]){
             case 2:
                 treeFat16 (bpb, fd);
             break;
+        }
+    } else if (strcmp(argv[1], "--cat") == 0) {
+        if (argc != 4){
+            printf("falta que posis el fitxer.\n");
+            printf("Incorrect arguments: /fsutils --cat <file system> <file>\n");
+        } else {
+            switch (file_system){
+                case 1:
+                    printf("es ext2, ha de ser fat16.\n");
+                break;
+                case 2:
+                    catFat16 (bpb, fd, argv[3]);
+                break;
+            }
         }
     } else {
         printf("Incorrect arguments: /fsutils --command <file system>\n");
