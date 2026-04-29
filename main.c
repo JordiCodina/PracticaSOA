@@ -26,7 +26,7 @@ int main (int argc,char *argv[]){
     */
 
     if (argc < 3) {
-        printf("Incorrect arguments: /fsutils --command <file system>\n");
+        printf("Incorrect arguments: ./fsutils --command <file system>\n");
         return 1; 
     }  
 
@@ -40,28 +40,55 @@ int main (int argc,char *argv[]){
     }
 
     SuperBlock sb;
-    lseek(fd, 1024, SEEK_SET);
-    read(fd, &sb, sizeof(SuperBlock));
+    if (lseek(fd, 1024, SEEK_SET) < 0) {
+        perror("lseek");
+        close(fd);
+        return 1;
+    }
+    if (read(fd, &sb, sizeof(SuperBlock)) != (ssize_t) sizeof(SuperBlock)) {
+        perror("read");
+        close(fd);
+        return 1;
+    }
 
     BPB bpb;
-    lseek(fd, 0, SEEK_SET);
-    read(fd, &bpb, sizeof(BPB));
-    lseek(fd, 0, SEEK_SET);
+    if (lseek(fd, 0, SEEK_SET) < 0) {
+        perror("lseek");
+        close(fd);
+        return 1;
+    }
+    if (read(fd, &bpb, sizeof(BPB)) != (ssize_t) sizeof(BPB)) {
+        perror("read");
+        close(fd);
+        return 1;
+    }
 
     unsigned short fat16_confirm;
-    lseek(fd, 510, SEEK_SET);
-    read(fd, &fat16_confirm, sizeof(short));
+    if (lseek(fd, 510, SEEK_SET) < 0) {
+        perror("lseek");
+        close(fd);
+        return 1;
+    }
+    if (read(fd, &fat16_confirm, sizeof(short)) != (ssize_t) sizeof(short)) {
+        perror("read");
+        close(fd);
+        return 1;
+    }
 
     char file_system = 0;
 
     if (sb.s_magic == 0xEF53) { //EXT2_SUPER_MAGIC
         //el camp s.magic indica si és un sistema de fitxers Ext32.
         file_system = 1;
-    } else if ((fat16_confirm & 0x0000FFFF) == 0xAA55) {
-        //sector[510] equals 0x55, and sector[511] equals 0xAA
+    } else if ((fat16_confirm & 0x0000FFFF) == 0xAA55 && comprovarSiEsFat16Correcte(bpb)) {
+        //sector[510]=0x55 i sector[511]=0xAA es la signatura del sector d'arrencada,
+        //pero no es exclusiva de FAT16. Cal validar tambe els camps del BPB
+        //(comptatge de clusters, bytes per sector, FATs, ...) per evitar
+        //falsos positius amb FAT12, FAT32 o altres volums bootables.
         file_system = 2;
     } else { //no s'ha detectat ni EXT2 ni FAT16
         printErrorFileSystem();
+        close(fd);
         return 1;
     }
 
@@ -86,7 +113,7 @@ int main (int argc,char *argv[]){
     } else if (strcmp(argv[1], "--cat") == 0) {
         if (argc != 4){
             printf("falta que posis el fitxer.\n");
-            printf("Incorrect arguments: /fsutils --cat <file system> <file>\n");
+            printf("Incorrect arguments: ./fsutils --cat <file system> <file>\n");
         } else {
             switch (file_system){
                 case 1:
@@ -98,7 +125,7 @@ int main (int argc,char *argv[]){
             }
         }
     } else {
-        printf("Incorrect arguments: /fsutils --command <file system>\n");
+        printf("Incorrect arguments: ./fsutils --command <file system>\n");
         close(fd);
         return 1; 
     }

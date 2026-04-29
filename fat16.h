@@ -50,6 +50,41 @@ typedef struct _RootDir {
 // stop hack to remove padding
 #pragma pack(pop)
 
+// Validacio consistent del BPB. La signatura 0xAA55 nomes diu que el sector
+// d'arrencada es valid, pero pot apareixer tambe a FAT12, FAT32, NTFS o un
+// MBR. Segons l'especificacio oficial de Microsoft, l'unica manera correcta
+// de determinar el tipus de FAT es calcular el nombre de clusters de dades:
+// FAT16 ha de tenir entre 4085 i 65524 clusters.
+int comprovarSiEsFat16Correcte(BPB bpb) {
+
+    unsigned short bytesPerSector = bpb.BPB_BytsPerSec;
+    unsigned char sectorsPerCluster = bpb.BPB_SecPerClus;
+    unsigned short reservedSectors = bpb.BPB_RsvdSecCnt;
+    unsigned char numFATs = bpb.BPB_NumFATs;
+    unsigned short sectorsPerFAT = bpb.BPB_FATSz16;
+    unsigned short rootEntries = bpb.BPB_RootEntCnt;
+    unsigned int rootDirSectors;
+    if (bytesPerSector != 0) {
+        rootDirSectors = (rootEntries * 32) / bytesPerSector;
+    } else {
+        rootDirSectors = (rootEntries * 32) / 1;//per evitar /0
+    }
+
+    unsigned short totalSectors16 = bpb.BPB_TotSec16;
+    unsigned int totalSectors32 = bpb.BPB_TotSec32;
+    unsigned int totalSectors = (totalSectors16 != 0) ? totalSectors16 : totalSectors32;
+
+    unsigned int dataSectors = totalSectors - reservedSectors - (numFATs * sectorsPerFAT) - rootDirSectors;
+
+    unsigned int clusterCount;
+    if (sectorsPerCluster != 0) {
+        clusterCount = dataSectors / sectorsPerCluster;
+        return clusterCount > 4085 && clusterCount < 65525;
+    } else {
+        return 0;
+    }
+}
+
 void printFilesystemInfoFat16(BPB bpb) {
 
     printf("\n");
@@ -61,7 +96,7 @@ void printFilesystemInfoFat16(BPB bpb) {
     printf("\n");
 
     char *buf = generateStringWithZeroAtEnd (bpb.BS_OEMName, sizeof(bpb.BS_OEMName));
-    printf("System name: %s\n", bpb.BS_OEMName);
+    printf("System name: %s\n", buf);
     free(buf);
     printf("Sector size: %u\n", bpb.BPB_BytsPerSec);
     printf("Sectors per cluster: %u\n", bpb.BPB_SecPerClus);

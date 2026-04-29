@@ -1,3 +1,9 @@
+// hack to remove padding - les estructures que es llegeixen directament del
+// disc han de tenir el mateix layout binari que defineix l'especificacio
+// d'EXT2. Sense pragma pack, el compilador podria afegir padding entre camps
+// per alinear-los i les lectures binaries quedarien desplacades.
+#pragma pack(push, 1)
+
 //Ext2 superblock
 typedef struct _SuperBlock {
 
@@ -101,6 +107,9 @@ typedef struct {
     unsigned char i_osd2[12];
 
 }ext2_inode;
+
+// stop hack to remove padding
+#pragma pack(pop)
 
 void printFilesystemInfoExt2(SuperBlock sb) {
 
