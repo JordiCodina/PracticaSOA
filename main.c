@@ -117,7 +117,7 @@ int main (int argc,char *argv[]){
         } else {
             switch (file_system){
                 case 1:
-                    printf("es ext2, ha de ser fat16.\n");
+                    catExt2 (sb, fd, argv[3]);
                 break;
                 case 2:
                     catFat16 (bpb, fd, argv[3]);

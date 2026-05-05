@@ -201,70 +201,70 @@ ext2_inode readInode(int fd, SuperBlock sb, unsigned int inodeNum) {
 
 void treeExt2Recursiu (SuperBlock sb, int fd, unsigned int inodeNum, int nivell, int* elements);
 
+
 void processBlock (SuperBlock sb, int fd, unsigned int blockNum, int nivell,int* columnes) {
     unsigned int blockSize = 1024 << sb.s_log_block_size;
 
     unsigned long blockOffset = (unsigned long)blockNum * blockSize;//aixo es la posicio del bloc de dades del directori
-        unsigned int bytesLlegits = 0;
+    unsigned int bytesLlegits = 0;
 
-        while (bytesLlegits<blockSize) { 
-            lseek(fd, blockOffset + bytesLlegits, SEEK_SET);// Ens posicionem a l'entrada actual dins del bloc de dades
+    while (bytesLlegits<blockSize) { 
+        lseek(fd, blockOffset + bytesLlegits, SEEK_SET);// Ens posicionem a l'entrada actual dins del bloc de dades
+        
+        unsigned int fillInode;
+        unsigned short midaTotal;
+        unsigned char midaName;
+        char fileType;
+
+        //aquets camps estan a dataBlocks del Block group 2
+        read(fd, &fillInode, 4);//inode
+        read(fd, &midaTotal, 2);//rec_len
+        read(fd, &midaName, 1);//name_len
+        read(fd, &fileType, 1);//file_type
+
+        if (fillInode != 0) { //si l'inode es 0, vol dir que no hi ha cap entrada en aquesta posicio, per tant no fem res
             
-            unsigned int fillInode;
-            unsigned short midaTotal;
-            unsigned char midaName;
-            char fileType;
-
-            //aquets camps estan a dataBlocks del Block group 2
-            read(fd, &fillInode, 4);//inode
-            read(fd, &midaTotal, 2);//rec_len
-            read(fd, &midaName, 1);//name_len
-            read(fd, &fileType, 1);//file_type
-
-             if (fillInode != 0) { //si l'inode es 0, vol dir que no hi ha cap entrada en aquesta posicio, per tant no fem res
-              
-                char name[256];
-                read(fd, name, midaName);//llegim el nom
-                name[midaName] = '\0';
+            char name[256];
+            read(fd, name, midaName);//llegim el nom
+            name[midaName] = '\0';
 
 
-               if (!(strcmp(name, ".") == 0 || strcmp(name, "..") == 0)) { //si el nom de l'entrada es "." o ".." no el mostrem, perque no aporten informacio
-                //aqui printem tot 
-                    for (int i = 0; i < nivell; i++) {
-                            if (columnes[i]){
-                                printf("│   ");
-                            }
-                            else{ 
-                                printf("    ");
-                            }
-                    }
-                    int esUltim = (bytesLlegits + midaTotal >= blockSize);
-                    if (esUltim){
-                            printf("└── %s\n", name);
-                            columnes[nivell] = 0; 
-                            //printf("nivell %d a 0\n", nivell);
-                    } 
-                    else {
-                        printf("├── %s\n", name);
-                    }
+            if (!(strcmp(name, ".") == 0 || strcmp(name, "..") == 0)) { //si el nom de l'entrada es "." o ".." no el mostrem, perque no aporten informacio
+            //aqui printem tot 
+                for (int i = 0; i < nivell; i++) {
+                        if (columnes[i]){
+                            printf("│   ");
+                        }
+                        else{ 
+                            printf("    ");
+                        }
+                }
+                int esUltim = (bytesLlegits + midaTotal >= blockSize);
+                if (esUltim){
+                        printf("└── %s\n", name);
+                        columnes[nivell] = 0; 
+                        //printf("nivell %d a 0\n", nivell);
+                } 
+                else {
+                    printf("├── %s\n", name);
+                }
 
-                    ext2_inode fill = readInode(fd, sb, fillInode);
-                    if (isDirectoryExt2(fill)) {    //si es directori llavors seguim  amb la recursivitat, si no es directori no fem res
-                    columnes[nivell + 1] = 1; 
-                    //printf("nivell %d a 1\n", nivell);
-                    treeExt2Recursiu(sb, fd, fillInode, nivell + 1, columnes);                  
-                    }
+                ext2_inode fill = readInode(fd, sb, fillInode);
+                if (isDirectoryExt2(fill)) {    //si es directori llavors seguim  amb la recursivitat, si no es directori no fem res
+                columnes[nivell + 1] = 1; 
+                //printf("nivell %d a 1\n", nivell);
+                treeExt2Recursiu(sb, fd, fillInode, nivell + 1, columnes);                  
                 }
             }
-           if (midaTotal==0) break;
-
-            bytesLlegits += midaTotal;
         }
-         
-    }
+        if (midaTotal==0) break;
+
+        bytesLlegits += midaTotal;
+    } 
+}
 
 
-    void processIndirect(SuperBlock sb, int fd, unsigned int blockNum, int level, int nivell, int* elements) {
+void processIndirect(SuperBlock sb, int fd, unsigned int blockNum, int level, int nivell, int* columnes) {
 
     if (blockNum == 0) return;
 
@@ -278,14 +278,14 @@ void processBlock (SuperBlock sb, int fd, unsigned int blockNum, int nivell,int*
         read(fd, &ptr, 4);
         if (ptr == 0) continue;
         if (level == 1) {
-            processBlock(sb, fd, ptr, nivell, elements);
+            processBlock(sb, fd, ptr, nivell, columnes);
         } else {
-            processIndirect(sb, fd, ptr, level-1, nivell, elements);
+            processIndirect(sb, fd, ptr, level-1, nivell, columnes);
         }
     }
 }
 
-void treeExt2Recursiu (SuperBlock sb, int fd, unsigned int inodeNum, int nivell, int* elements) {
+void treeExt2Recursiu (SuperBlock sb, int fd, unsigned int inodeNum, int nivell, int* columnes) {
 
     ext2_inode currentInode = readInode(fd, sb, inodeNum);
     if (!isDirectoryExt2(currentInode)){ 
@@ -293,18 +293,18 @@ void treeExt2Recursiu (SuperBlock sb, int fd, unsigned int inodeNum, int nivell,
     }
     for (int i = 0; i < 12; i++) {
         if (currentInode.i_block[i] != 0) {
-            processBlock(sb, fd, currentInode.i_block[i], nivell, elements);
+            processBlock(sb, fd, currentInode.i_block[i], nivell, columnes);
         }
     }
    if (currentInode.i_block[12] != 0)
-        processIndirect(sb, fd, currentInode.i_block[12], 1, nivell, elements);
+        processIndirect(sb, fd, currentInode.i_block[12], 1, nivell, columnes);
 
     if (currentInode.i_block[13] != 0)
-        processIndirect(sb, fd, currentInode.i_block[13], 2, nivell, elements);
+        processIndirect(sb, fd, currentInode.i_block[13], 2, nivell, columnes);
 
     if (currentInode.i_block[14] != 0)
-        processIndirect(sb, fd, currentInode.i_block[14], 3, nivell, elements);
-    }
+        processIndirect(sb, fd, currentInode.i_block[14], 3, nivell, columnes);
+}
 
 
 void treeExt2(SuperBlock sb, int fd) {
@@ -316,4 +316,71 @@ void treeExt2(SuperBlock sb, int fd) {
     }
     columnes[0] = 1;
     treeExt2Recursiu(sb, fd, inodeRoot, 0,columnes); 
+}
+
+void buscarFitxer (SuperBlock sb, int fd, char *fitxer, unsigned int inode);
+
+void buscarFitxerIBlock (SuperBlock sb, int fd, char *fitxer, unsigned int i_block){
+
+    unsigned int blockSize = 1024 << sb.s_log_block_size;
+
+    unsigned long blockOffset = (unsigned long)i_block * blockSize;
+    unsigned int bytesLlegits = 0;
+
+    while (bytesLlegits<blockSize) { 
+        lseek(fd, blockOffset + bytesLlegits, SEEK_SET);
+        
+        unsigned int fillInode;
+        unsigned short midaTotal;
+        unsigned char midaName;
+        char fileType;
+
+        //aquets camps estan a dataBlocks del Block group 2
+        read(fd, &fillInode, 4);//inode
+        read(fd, &midaTotal, 2);//rec_len
+        read(fd, &midaName, 1);//name_len
+        read(fd, &fileType, 1);//file_type
+
+        if (fillInode != 0) { //si l'inode es 0, vol dir que no hi ha cap entrada en aquesta posicio, per tant no fem res
+            
+            char name[256];
+            read(fd, name, midaName);//llegim el nom
+            name[midaName] = '\0';
+
+            if (!(strcmp(name, ".") == 0 || strcmp(name, "..") == 0)){ //si el nom de l'entrada es "." o ".." no el mostrem, perque no aporten informacio
+
+                ext2_inode fill = readInode(fd, sb, fillInode);
+                if (isDirectoryExt2(fill)) {
+                    buscarFitxer(sb, fd, fitxer, fillInode);  
+                } else {
+                    if (strcmp(name, fitxer) == 0){
+                        printf("s'ha trobat\n");
+                    }
+                }
+            }          
+        }
+        if (midaTotal==0) break;
+
+        bytesLlegits += midaTotal;
+    } 
+}
+
+void buscarFitxer (SuperBlock sb, int fd, char *fitxer, unsigned int inode){
+    
+    ext2_inode currentInode = readInode(fd, sb, inode);
+
+    if (!isDirectoryExt2(currentInode)){ 
+        return;
+    }
+    for (int i = 0; i < 12; i++) {
+        if (currentInode.i_block[i] != 0) {
+            buscarFitxerIBlock(sb, fd, fitxer, currentInode.i_block[i]);
+        }
+    }
+}
+
+void catExt2(SuperBlock sb, int fd, char *fitxer) {
+    //codi aqui
+    unsigned int inodeRoot=2;
+    buscarFitxer(sb, fd, fitxer, inodeRoot);
 }
