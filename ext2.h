@@ -318,69 +318,135 @@ void treeExt2(SuperBlock sb, int fd) {
     treeExt2Recursiu(sb, fd, inodeRoot, 0,columnes); 
 }
 
-void buscarFitxer (SuperBlock sb, int fd, char *fitxer, unsigned int inode);
+void printIndirectExt2(SuperBlock sb, int fd, unsigned int blockNum, int level, unsigned int *currSizeNotRead);
+int buscarFitxer(SuperBlock sb, int fd, char *fitxer, unsigned int inode, unsigned int *inodeTrobat);
 
-void buscarFitxerIBlock (SuperBlock sb, int fd, char *fitxer, unsigned int i_block){
 
+
+void printExt2(SuperBlock sb, int fd, ext2_inode inode){
     unsigned int blockSize = 1024 << sb.s_log_block_size;
+    
+    unsigned int currSizeNotRead = inode.i_size;
+    char buffer[4097];
+    for(int i = 0; i < 12 && currSizeNotRead > 0; i++){
 
+        if(inode.i_block[i] == 0) { continue; }
+        unsigned long offset = (unsigned long)inode.i_block[i] * blockSize;
+        lseek(fd, offset, SEEK_SET);
+        unsigned int bytesToRead = (currSizeNotRead > blockSize) ? blockSize : currSizeNotRead;
+        read(fd, buffer, bytesToRead);
+        buffer[bytesToRead] = '\0';
+        printf("%s", buffer);
+        currSizeNotRead -= bytesToRead;
+    }
+
+    if(inode.i_block[12] != 0) {
+         printIndirectExt2(sb, fd, inode.i_block[12], 1, &currSizeNotRead); 
+    }
+    if(inode.i_block[13] != 0) {
+         printIndirectExt2(sb, fd, inode.i_block[13], 2, &currSizeNotRead);
+         }
+    if(inode.i_block[14] != 0) {
+         printIndirectExt2(sb, fd, inode.i_block[14], 3, &currSizeNotRead);
+         }
+}
+
+void printIndirectExt2(SuperBlock sb, int fd, unsigned int blockNum, int level, unsigned int *currSizeNotRead){
+    if(blockNum == 0 || *currSizeNotRead == 0) { return; }
+    unsigned int blockSize = 1024 << sb.s_log_block_size;
+    lseek(fd, (unsigned long)blockNum * blockSize, SEEK_SET);
+    int total = blockSize / 4;
+
+
+    for(int i = 0; i < total && *currSizeNotRead > 0; i++){
+        unsigned int ptr;
+        read(fd, &ptr, 4);
+        if(ptr == 0) { 
+            continue; 
+        }
+        if(level == 1){
+
+            char buffer[4097];
+            unsigned long currentPos = lseek(fd, 0, SEEK_CUR);
+            lseek(fd, (unsigned long)ptr * blockSize, SEEK_SET);
+            unsigned int bytesToRead = (*currSizeNotRead > blockSize) ? blockSize : *currSizeNotRead;
+            read(fd, buffer, bytesToRead);
+            buffer[bytesToRead] = '\0';
+            printf("%s", buffer);
+
+            *currSizeNotRead -= bytesToRead;
+            lseek(fd, currentPos, SEEK_SET);
+        } else {
+            unsigned long currentPos = lseek(fd, 0, SEEK_CUR);
+            printIndirectExt2(sb, fd, ptr, level-1, currSizeNotRead);
+
+            lseek(fd, currentPos, SEEK_SET);
+        }
+    }
+}
+
+int buscarFitxerIBlock(SuperBlock sb, int fd, char *fitxer, unsigned int i_block, unsigned int *inodeTrobat){
+    unsigned int blockSize = 1024 << sb.s_log_block_size;
     unsigned long blockOffset = (unsigned long)i_block * blockSize;
     unsigned int bytesLlegits = 0;
 
-    while (bytesLlegits<blockSize) { 
+    
+    while(bytesLlegits < blockSize){
+
         lseek(fd, blockOffset + bytesLlegits, SEEK_SET);
-        
-        unsigned int fillInode;
-        unsigned short midaTotal;
-        unsigned char midaName;
-        char fileType;
-
-        //aquets camps estan a dataBlocks del Block group 2
-        read(fd, &fillInode, 4);//inode
-        read(fd, &midaTotal, 2);//rec_len
-        read(fd, &midaName, 1);//name_len
-        read(fd, &fileType, 1);//file_type
-
-        if (fillInode != 0) { //si l'inode es 0, vol dir que no hi ha cap entrada en aquesta posicio, per tant no fem res
-            
+        unsigned int fillInode; unsigned short midaTotal; unsigned char midaName; char fileType;
+        read(fd, &fillInode, 4); read(fd, &midaTotal, 2); read(fd, &midaName, 1); read(fd, &fileType, 1);
+        if(fillInode != 0){
             char name[256];
-            read(fd, name, midaName);//llegim el nom
+            read(fd, name, midaName);
             name[midaName] = '\0';
 
-            if (!(strcmp(name, ".") == 0 || strcmp(name, "..") == 0)){ //si el nom de l'entrada es "." o ".." no el mostrem, perque no aporten informacio
-
+            if(!(strcmp(name, ".") == 0 || strcmp(name, "..") == 0)){
                 ext2_inode fill = readInode(fd, sb, fillInode);
-                if (isDirectoryExt2(fill)) {
-                    buscarFitxer(sb, fd, fitxer, fillInode);  
+                if(isDirectoryExt2(fill)){
+                    if(buscarFitxer(sb, fd, fitxer, fillInode, inodeTrobat)){ return 1; }
                 } else {
-                    if (strcmp(name, fitxer) == 0){
-                        printf("s'ha trobat\n");
-                    }
-                }
-            }          
-        }
-        if (midaTotal==0) break;
 
+                    if(strcmp(name, fitxer) == 0){
+                         *inodeTrobat = fillInode; return 1;
+                        
+                        }
+                }
+            }
+        }
+        if(midaTotal == 0) { break; }
         bytesLlegits += midaTotal;
-    } 
+    }
+    return 0;
 }
 
-void buscarFitxer (SuperBlock sb, int fd, char *fitxer, unsigned int inode){
-    
+int buscarFitxer(SuperBlock sb, int fd, char *fitxer, unsigned int inode, unsigned int *inodeTrobat){
     ext2_inode currentInode = readInode(fd, sb, inode);
+    if(!isDirectoryExt2(currentInode)) { 
+        return 0;
+     }
+    for(int i = 0; i < 12; i++){
+        if(currentInode.i_block[i] != 0){
+            if(buscarFitxerIBlock(sb, fd, fitxer, currentInode.i_block[i], inodeTrobat)){
+                 return 1; 
+                
+                }
+        }
+    }
+    return 0;
+}
 
-    if (!isDirectoryExt2(currentInode)){ 
+void catExt2(SuperBlock sb, int fd, char *fitxer){
+    unsigned int inodeRoot = 2, inodeTrobat = 0;
+    if(!buscarFitxer(sb, fd, fitxer, inodeRoot, &inodeTrobat)){
+        printf("Fitxer no trobat\n");
         return;
     }
-    for (int i = 0; i < 12; i++) {
-        if (currentInode.i_block[i] != 0) {
-            buscarFitxerIBlock(sb, fd, fitxer, currentInode.i_block[i]);
-        }
+    ext2_inode inode = readInode(fd, sb, inodeTrobat);
+    if(isDirectoryExt2(inode)){
+        printf("Es un directori\n");
+        return;
     }
-}
-
-void catExt2(SuperBlock sb, int fd, char *fitxer) {
-    //codi aqui
-    unsigned int inodeRoot=2;
-    buscarFitxer(sb, fd, fitxer, inodeRoot);
+    printExt2(sb, fd, inode);
+    printf("\n");
 }
