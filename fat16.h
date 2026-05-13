@@ -28,6 +28,9 @@ typedef struct _BPB {
     unsigned int BS_VolID;              //4 bytes
     unsigned char BS_VolLab[11];        //11 bytes
     unsigned char BS_FilSysType[8];     //8 bytes
+
+    unsigned char BPB_FATSz32; //? bytes
+    //nomes es posa per evitar errors. ja savem que no hi haura fat32.
 } BPB;
 
 typedef struct _RootDir {
@@ -57,32 +60,32 @@ typedef struct _RootDir {
 // FAT16 ha de tenir entre 4085 i 65524 clusters.
 int comprovarSiEsFat16Correcte(BPB bpb) {
 
-    unsigned short bytesPerSector = bpb.BPB_BytsPerSec;
-    unsigned char sectorsPerCluster = bpb.BPB_SecPerClus;
-    unsigned short reservedSectors = bpb.BPB_RsvdSecCnt;
-    unsigned char numFATs = bpb.BPB_NumFATs;
-    unsigned short sectorsPerFAT = bpb.BPB_FATSz16;
-    unsigned short rootEntries = bpb.BPB_RootEntCnt;
-    unsigned int rootDirSectors;
-    if (bytesPerSector != 0) {
-        rootDirSectors = (rootEntries * 32) / bytesPerSector;
+    unsigned int TotalSectors = 0;
+    unsigned int fatSize = 0;
+    if (bpb.BPB_TotSec16 != 0){
+        TotalSectors = bpb.BPB_TotSec16;
     } else {
-        rootDirSectors = (rootEntries * 32) / 1;//per evitar /0
+        TotalSectors = bpb.BPB_TotSec32;
+    }
+    if (bpb.BPB_FATSz16 != 0){
+        fatSize = bpb.BPB_FATSz16;
+    } else {
+        fatSize = bpb.BPB_FATSz32;
     }
 
-    unsigned short totalSectors16 = bpb.BPB_TotSec16;
-    unsigned int totalSectors32 = bpb.BPB_TotSec32;
-    unsigned int totalSectors = (totalSectors16 != 0) ? totalSectors16 : totalSectors32;
+    unsigned int RootDirSectors = ((bpb.BPB_RootEntCnt * 32) + bpb.BPB_BytsPerSec - 1) / bpb.BPB_BytsPerSec;
+    unsigned int NonDataSectors = bpb.BPB_RsvdSecCnt + ( bpb.BPB_NumFATs * fatSize ) + RootDirSectors;
 
-    unsigned int dataSectors = totalSectors - reservedSectors - (numFATs * sectorsPerFAT) - rootDirSectors;
+    unsigned int DataSectors = TotalSectors - NonDataSectors;
 
-    unsigned int clusterCount;
-    if (sectorsPerCluster != 0) {
-        clusterCount = dataSectors / sectorsPerCluster;
-        return clusterCount > 4085 && clusterCount < 65525;
-    } else {
-        return 0;
-    }
+    unsigned int TotalClusters = DataSectors / bpb.BPB_SecPerClus;
+
+    if (TotalClusters < 4085)
+        return 0; //fat12
+    else if (TotalClusters < 65525)
+        return 1; //fat16
+    else
+        return 0; //fat32
 }
 
 void printFilesystemInfoFat16(BPB bpb) {
