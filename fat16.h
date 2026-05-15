@@ -1,4 +1,5 @@
 #define ATTR_DIRECTORY 0x10
+#define FAT16_EOC 0xFFF8
 
 // hack to remove padding
 #pragma pack(push, 1)
@@ -52,6 +53,20 @@ typedef struct _RootDir {
 
 // stop hack to remove padding
 #pragma pack(pop)
+
+unsigned short fat16SeguentCluster(BPB bpb, int fd, unsigned short cluster) {
+    unsigned short seguent = FAT16_EOC;
+    unsigned int fatOffset = bpb.BPB_RsvdSecCnt * bpb.BPB_BytsPerSec;
+
+    lseek(fd, fatOffset + ((unsigned long)cluster * 2), SEEK_SET);
+    read(fd, &seguent, sizeof(unsigned short));
+
+    return seguent;
+}
+
+int fat16ClusterValid(unsigned short cluster) {
+    return cluster >= 2 && cluster < FAT16_EOC;
+}
 
 // Validacio consistent del BPB. La signatura 0xAA55 nomes diu que el sector
 // d'arrencada es valid, pero pot apareixer tambe a FAT12, FAT32, NTFS o un
@@ -117,8 +132,26 @@ char *fatNameAString(unsigned char nomFat[11]) {
     int pos = 0;
     char *nomString = (char *) malloc (13);
 
-    for (int i = 0; i < 8; i++) {
-        if (nomFat[i] != ' '){
+    int finalNom = 7;
+    while (finalNom >= 0 && nomFat[finalNom] == ' ') {
+        finalNom--;
+    }
+    int finalExt = 10;
+    while (finalExt >= 8 && nomFat[finalExt] == ' ') {
+        finalExt--;
+    }
+
+    for (int i = 0; i <= finalNom; i++) {
+        if ((nomFat[i] <= 'Z') && (nomFat[i] >= 'A')) {
+            nomString[pos++] = nomFat[i] - 'A' + 'a';
+        } else {
+            nomString[pos++] = nomFat[i];
+        }
+    }
+
+    if (finalExt >= 8) {
+        nomString[pos++] = '.';
+        for (int i = 8; i <= finalExt; i++) {
             if ((nomFat[i] <= 'Z') && (nomFat[i] >= 'A')) {
                 nomString[pos++] = nomFat[i] - 'A' + 'a';
             } else {
@@ -126,40 +159,28 @@ char *fatNameAString(unsigned char nomFat[11]) {
             }
         }
     }
-
-    char hasExt = 0;
-    for (int i = 8; i < 11; i++) {
-        if (nomFat[i] != ' ')
-            hasExt = 1;
-    }
-
-    if (hasExt) {
-        nomString[pos++] = '.';
-        for (int i = 8; i < 11; i++) {
-            if (nomFat[i] != ' '){
-                if ((nomFat[i] <= 'Z') && (nomFat[i] >= 'A')) {
-                    nomString[pos++] = nomFat[i] - 'A' + 'a';
-                } else {
-                    nomString[pos++] = nomFat[i];
-                }
-            }
-        }
-    }
     nomString[pos] = '\0';
     return nomString;
+}
+
+int fat16EsPunt(RootDir dr) {
+    return (dr.DIR_Attr & ATTR_DIRECTORY) && dr.DIR_Name[0] == '.' &&
+        (dr.DIR_Name[1] == ' ' || (dr.DIR_Name[1] == '.' && dr.DIR_Name[2] == ' '));
 }
 
 void treeFat16Recursiu (BPB bpb, 
     int fd, 
     unsigned int dataSectionBegin,
     unsigned int Offset,
+    unsigned int midaDir,
     int nivell,
     int* columnes) {
 
     RootDir dr;
     RootDir dr_next;
+    unsigned int inici = Offset;
 
-    while (1) {
+    while (Offset < inici + midaDir) {
 
         lseek(fd, Offset, SEEK_SET);
         read(fd, &dr, sizeof(RootDir));
@@ -177,11 +198,8 @@ void treeFat16Recursiu (BPB bpb,
         if ((dr.DIR_Attr & 0x0F) == 0x0F) {
             continue; // saltar LFN long file name
         }
-        if (dr.DIR_Attr & ATTR_DIRECTORY) {
-            // ignorar les carpetes "." y ".."
-            if (dr.DIR_Name[0] == '.') {
-                continue;
-            }
+        if (fat16EsPunt(dr)) {
+            continue;
         }
 
         for (int i = 0; i < nivell; i++) {
@@ -208,10 +226,15 @@ void treeFat16Recursiu (BPB bpb,
         free(nomReal);
 
         if (dr.DIR_Attr & ATTR_DIRECTORY) {
-            unsigned int iba = dataSectionBegin + ((dr.DIR_FstClusLO - 2) * bpb.BPB_SecPerClus);
-            unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
+            unsigned short cluster = dr.DIR_FstClusLO;
+            unsigned int clusterSize = bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec;
             columnes[nivell + 1] = 1; 
-            treeFat16Recursiu (bpb, fd, dataSectionBegin, fileOffset, nivell + 1, columnes);
+            while (fat16ClusterValid(cluster)) {
+                unsigned int iba = dataSectionBegin + ((cluster - 2) * bpb.BPB_SecPerClus);
+                unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
+                treeFat16Recursiu (bpb, fd, dataSectionBegin, fileOffset, clusterSize, nivell + 1, columnes);
+                cluster = fat16SeguentCluster(bpb, fd, cluster);
+            }
         } 
     }
 }
@@ -230,7 +253,7 @@ void treeFat16 (BPB bpb, int fd) {
     columnes[0] = 1;
 
     printf(".\n");
-    treeFat16Recursiu(bpb, fd, dataSectionBegin, RootDirOffset, 0, columnes);
+    treeFat16Recursiu(bpb, fd, dataSectionBegin, RootDirOffset, bpb.BPB_RootEntCnt * 32, 0, columnes);
 }
 
 void llegirFitxerFat16 (int fd, BPB bpb, unsigned int dataSectionBegin, RootDir dr){
@@ -238,21 +261,23 @@ void llegirFitxerFat16 (int fd, BPB bpb, unsigned int dataSectionBegin, RootDir 
         unsigned char *cluster = malloc (bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec);
         unsigned short currentCluster = dr.DIR_FstClusLO;
 
-        do {
+        unsigned int bytesRestants = dr.DIR_FileSize;
+
+        while (bytesRestants > 0 && fat16ClusterValid(currentCluster)) {
 
             unsigned int iba = dataSectionBegin + ((currentCluster - 2) * bpb.BPB_SecPerClus);
             unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
             unsigned int clusterSize = bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec;
+            unsigned int bytesALlegir = (bytesRestants < clusterSize) ? bytesRestants : clusterSize;
             lseek(fd, fileOffset, SEEK_SET);
-            read(fd, cluster, clusterSize);
+            read(fd, cluster, bytesALlegir);
 
-            printf("%s", cluster); //cat del cluester de fitxer
+            fwrite(cluster, 1, bytesALlegir, stdout); //cat del cluster de fitxer, nomes bytes reals
 
-            unsigned int FATOffset = bpb.BPB_RsvdSecCnt * bpb.BPB_BytsPerSec;
-            lseek(fd, FATOffset + (sizeof(unsigned short) * currentCluster), SEEK_SET);
-            read(fd, &currentCluster, sizeof(unsigned short));
+            bytesRestants -= bytesALlegir;
+            currentCluster = fat16SeguentCluster(bpb, fd, currentCluster);
 
-        } while (currentCluster != 65535); //FFFF marks EOF, FAT16
+        }
         free(cluster);
 }
 
@@ -260,12 +285,15 @@ void buscarFixerFat16 (BPB bpb,
     int fd, 
     unsigned int dataSectionBegin,
     unsigned int Offset,
+    unsigned int midaDir,
     char *fitxer,
     char *arxiuTrobat) {
 
     RootDir dr;
+    unsigned int inici = Offset;
+    unsigned int clusterSize = bpb.BPB_SecPerClus * bpb.BPB_BytsPerSec;
 
-    while (1) {
+    while (Offset < inici + midaDir) {
 
         lseek(fd, Offset, SEEK_SET);
         read(fd, &dr, sizeof(RootDir));
@@ -282,17 +310,21 @@ void buscarFixerFat16 (BPB bpb,
         if ((dr.DIR_Attr & 0x0F) == 0x0F) {
             continue; // saltar LFN long file name
         }
-        if (dr.DIR_Attr & ATTR_DIRECTORY) {
-            // ignorar les carpetes "." y ".."
-            if (dr.DIR_Name[0] == '.') {
-                continue;
-            }
+        if (fat16EsPunt(dr)) {
+            continue;
         }
 
         if (dr.DIR_Attr & ATTR_DIRECTORY) {
-            unsigned int iba = dataSectionBegin + ((dr.DIR_FstClusLO - 2) * bpb.BPB_SecPerClus);
-            unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
-            buscarFixerFat16 (bpb, fd, dataSectionBegin, fileOffset, fitxer, arxiuTrobat);
+            unsigned short cluster = dr.DIR_FstClusLO;
+            while (fat16ClusterValid(cluster)) {
+                unsigned int iba = dataSectionBegin + ((cluster - 2) * bpb.BPB_SecPerClus);
+                unsigned int fileOffset = iba * bpb.BPB_BytsPerSec;
+                buscarFixerFat16 (bpb, fd, dataSectionBegin, fileOffset, clusterSize, fitxer, arxiuTrobat);
+                if (*arxiuTrobat) {
+                    return;
+                }
+                cluster = fat16SeguentCluster(bpb, fd, cluster);
+            }
         } else {
             char *nouNom = fatNameAString(dr.DIR_Name);
             if (strcmp(nouNom, fitxer) == 0){
@@ -329,7 +361,7 @@ void catFat16 (BPB bpb, int fd, char *fitxer){
 
     char *fixerNom = generateStringWithZeroAtEnd ((unsigned char *) fitxer, strlen(fitxer));
     char arxiuTrobat = 0;
-    buscarFixerFat16(bpb, fd, dataSectionBegin, RootDirOffset, fixerNom, &arxiuTrobat);
+    buscarFixerFat16(bpb, fd, dataSectionBegin, RootDirOffset, bpb.BPB_RootEntCnt * 32, fixerNom, &arxiuTrobat);
 
     if (!arxiuTrobat){
         printf("No s'ha trobat el fitxer.\n");
